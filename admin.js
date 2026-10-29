@@ -1,7 +1,7 @@
 // Trang giảng viên (Firebase): bắt đầu lượt thi, hiện QR + đồng hồ, chấm điểm, xuất CSV.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, setDoc, getDoc, getDocFromServer, onSnapshot, collection, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, setDoc, getDoc, getDocFromServer, getDocs, deleteDoc, writeBatch, onSnapshot, collection, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const C = window.QUIZ_CONFIG;
 const fb = initializeApp(C.firebase);
@@ -198,4 +198,31 @@ $('btnStart').onclick = start;
 $('btnStop').onclick = stop;
 $('btnCsv').onclick = csv;
 $('btnCsvFull').onclick = csvFull;
+$('btnClear').onclick = clearClass;
+
+// Lớp mới: xóa toàn bộ bài làm và đặt lại 2 lần kiểm tra (đáp án được giữ lại)
+async function clearClass() {
+  const running = ['pre', 'post'].some(s => status[s] && status[s].startMs && now() < status[s].endMs);
+  if (running) { alert('Đang có bài kiểm tra diễn ra. Hãy chờ hết giờ hoặc bấm "Kết thúc sớm" trước.'); return; }
+  if (subs.length && confirm('Tải file CSV điểm của lớp này trước khi xóa?')) csv();
+  if (!confirm('XÓA toàn bộ ' + subs.length + ' bài làm và đặt lại test đầu/cuối buổi cho lớp mới?\nThao tác này không hoàn tác được.')) return;
+  $('btnClear').disabled = true; $('btnClear').textContent = 'Đang xóa…';
+  try {
+    const snap = await getDocs(collection(db, 'subs'));
+    let batch = writeBatch(db), n = 0;
+    for (const d of snap.docs) {
+      batch.delete(d.ref);
+      if (++n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
+    }
+    await batch.commit();
+    await deleteDoc(doc(db, 'config', 'pre'));
+    await deleteDoc(doc(db, 'config', 'post'));
+    $('session').value = 'pre'; qr = null;
+    alert('Đã xóa ' + n + ' bài làm. Sẵn sàng cho lớp mới.');
+  } catch (e) {
+    console.error(e);
+    alert('Xóa không thành công: ' + (e.code || e.message));
+  }
+  $('btnClear').disabled = false; $('btnClear').textContent = 'Lớp mới — xóa kết quả';
+}
 $('session').onchange = () => { qr = null; render(); };
