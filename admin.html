@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Điều khiển bài kiểm tra</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar"><span class="t">Trang giảng viên · Bài kiểm tra ATBX</span><span class="timer" id="timer">--:--</span></header>
+<main class="wide">
+
+  <div class="card" id="login">
+    <h2 style="margin-top:0">Đăng nhập giảng viên</h2>
+    <label class="f">Email</label>
+    <input type="text" id="email" autocomplete="username">
+    <label class="f">Mật khẩu</label>
+    <input type="password" id="pass" autocomplete="current-password">
+    <p id="loginErr" class="err"></p>
+    <button id="btnLogin">Đăng nhập</button>
+  </div>
+
+  <div id="panel" class="hidden">
+    <div class="card hidden" id="keyBox">
+      <h2 style="margin-top:0">Đáp án</h2>
+      <p class="note">Dán chuỗi 50 ký tự đáp án (câu 1 → 50) — có trong file HƯỚNG DẪN. Đáp án chỉ lưu trên Firebase, học viên không đọc được.</p>
+      <input type="text" id="keyInput" maxlength="50" style="font-family:monospace">
+      <p id="keyErr" class="err"></p>
+      <button id="btnKey">Lưu đáp án</button>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div><label class="f">Lần kiểm tra</label>
+          <select id="session"><option value="pre">Test đầu buổi</option><option value="post">Test cuối buổi</option></select></div>
+        <div><label class="f">Thời gian (phút)</label><input type="number" id="minutes" value="15" min="1" max="180"></div>
+        <div><button id="btnStart" style="width:100%">Bắt đầu và hiện QR</button></div>
+        <div><button id="btnStop" class="danger" style="width:100%">Kết thúc sớm</button></div>
+      </div>
+      <p class="note" id="stInfo"></p>
+    </div>
+
+    <div class="card hidden" id="live">
+      <div class="qrwrap">
+        <div><div id="qr"></div><p class="url" id="url"></p></div>
+        <div>
+          <div class="big" id="bigTimer">15:00</div>
+          <div class="stats">
+            <div class="stat"><b id="nJoin">0</b>đã vào làm</div>
+            <div class="stat"><b id="nDone">0</b>đã nộp</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">Kết quả</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="sec" id="btnCsv">Tải CSV điểm</button>
+        <button class="sec" id="btnCsvFull">Tải CSV chi tiết đáp án</button>
+        <button class="sec" id="btnEditKey">Sửa đáp án</button>
+      </div>
+      <div class="stats" id="summary" style="margin:16px 0"></div>
+      <p class="note">Dấu * : học viên chưa nộp chính thức (đóng trang trước giờ) — điểm tính theo bản lưu gần nhất.</p>
+      <div style="max-height:520px;overflow:auto"><table id="tbl"></table></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">Tỷ lệ trả lời đúng từng câu</h2>
+      <p class="note">Đầu buổi → Cuối buổi. Câu tô đỏ: cuối buổi vẫn dưới 70% đúng — nên chữa lại.</p>
+      <div class="qbar" id="qstats"></div>
+    </div>
+  </div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<script src="questions.js"></script>
+<script type="module" src="admin.js"></script>
+</body>
+</html>
