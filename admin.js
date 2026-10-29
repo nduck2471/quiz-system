@@ -10,6 +10,7 @@ const db = getFirestore(fb);
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const N = (window.QUESTIONS && window.QUESTIONS.length) || 50;
+const POINTS = 2;                      // điểm cho mỗi câu đúng → tổng 100 điểm
 
 let offset = 0, KEY = '', status = { pre: null, post: null }, subs = [], tick = null, qr = null, started = false;
 const base = location.href.replace(/admin\.html.*$/, '').replace(/[?#].*$/, '');
@@ -48,10 +49,19 @@ onAuthStateChanged(auth, async user => {
 });
 
 async function saveKey() {
-  const k = $('keyInput').value.trim().toUpperCase();
-  if (!new RegExp('^[ABCD]{' + N + '}$').test(k)) { $('keyErr').textContent = 'Cần đúng ' + N + ' ký tự A/B/C/D.'; return; }
-  await setDoc(doc(db, 'secret', 'answerKey'), { key: k });
+  const k = $('keyInput').value.replace(/[^A-Za-z]/g, '').toUpperCase();
+  if (!new RegExp('^[ABCD]{' + N + '}$').test(k)) { $('keyErr').textContent = 'Cần đúng ' + N + ' ký tự A/B/C/D (hiện có ' + k.length + ').'; return; }
+  try {
+    await setDoc(doc(db, 'secret', 'answerKey'), { key: k });
+    const check = await getDocFromServer(doc(db, 'secret', 'answerKey'));
+    if (!check.exists() || check.data().key !== k) throw new Error('không đọc lại được đáp án');
+  } catch (e) {
+    console.error(e);
+    $('keyErr').textContent = 'Không lưu được đáp án: ' + (e.code || e.message);
+    return;
+  }
   KEY = k; $('keyErr').textContent = ''; $('keyBox').classList.add('hidden'); renderResults();
+  alert('Đã lưu đáp án. Toàn bộ bài đã nộp được chấm lại.');
 }
 
 function cur() { return status[$('session').value]; }
@@ -104,7 +114,7 @@ async function stop() {
 function grade(r) {
   let c = 0, mask = '';
   for (let i = 0; i < N; i++) { const ok = KEY && r.answers.charAt(i) === KEY.charAt(i); if (ok) c++; mask += ok ? '1' : '0'; }
-  return { correct: c, score: Math.round(c / N * 100) / 10, mask };
+  return { correct: c, score: c * POINTS, mask };
 }
 
 // Ghép đầu/cuối buổi: cùng máy (cùng uid), khác máy thì theo họ tên + năm sinh
@@ -123,22 +133,22 @@ function merged() {
 function renderResults() {
   if (!$('panel') || $('panel').classList.contains('hidden')) return;
   const list = merged();
-  const sc = x => x ? x.score.toFixed(1) + (x.final ? '' : '*') : '—';
-  let h = '<tr><th>#</th><th>Họ tên</th><th>Năm sinh</th><th>Đơn vị</th><th class="num">Đầu buổi</th><th class="num">Cuối buổi</th><th class="num">Thay đổi</th></tr>';
+  const sc = x => x ? x.score + (x.final ? '' : '*') : '—';
+  let h = '<tr><th>#</th><th>Họ tên</th><th>Năm sinh</th><th>Đơn vị</th><th class="num">Đầu buổi (/100)</th><th class="num">Cuối buổi (/100)</th><th class="num">Thay đổi</th></tr>';
   list.forEach((m, i) => {
     const r = m.pre || m.post;
     const d = (m.pre && m.post) ? (m.post.score - m.pre.score) : null;
     h += '<tr><td>' + (i + 1) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.birth) + '</td><td>' + esc(r.unit) + '</td>' +
       '<td class="num">' + sc(m.pre) + '</td><td class="num">' + sc(m.post) + '</td>' +
-      '<td class="num">' + (d === null ? '' : (d > 0 ? '+' : '') + d.toFixed(1)) + '</td></tr>';
+      '<td class="num">' + (d === null ? '' : (d > 0 ? '+' : '') + d) + '</td></tr>';
   });
   $('tbl').innerHTML = h;
 
-  const avg = s => { const a = list.map(m => m[s]).filter(Boolean); return a.length ? (a.reduce((x, y) => x + y.score, 0) / a.length).toFixed(2) : '—'; };
+  const avg = s => { const a = list.map(m => m[s]).filter(Boolean); return a.length ? (a.reduce((x, y) => x + y.score, 0) / a.length).toFixed(1) : '—'; };
   const cnt = s => list.filter(m => m[s]).length;
   $('summary').innerHTML = !KEY ? '<p class="err">Chưa lưu đáp án — chưa chấm được điểm.</p>' :
-    '<div class="stat"><b>' + cnt('pre') + '</b>bài đầu buổi</div><div class="stat"><b>' + avg('pre') + '</b>điểm TB đầu buổi</div>' +
-    '<div class="stat"><b>' + cnt('post') + '</b>bài cuối buổi</div><div class="stat"><b>' + avg('post') + '</b>điểm TB cuối buổi</div>';
+    '<div class="stat"><b>' + cnt('pre') + '</b>bài đầu buổi</div><div class="stat"><b>' + avg('pre') + '</b>điểm TB đầu buổi (/100)</div>' +
+    '<div class="stat"><b>' + cnt('post') + '</b>bài cuối buổi</div><div class="stat"><b>' + avg('post') + '</b>điểm TB cuối buổi (/100)</div>';
 
   const rate = s => {
     const rows = list.map(m => m[s]).filter(Boolean);
@@ -161,16 +171,16 @@ function download(lines, name) {
   a.click();
 }
 function csv() {
-  const lines = [['Họ tên', 'Năm sinh', 'Đơn vị', 'Điểm đầu buổi', 'Số đúng đầu buổi', 'Điểm cuối buổi', 'Số đúng cuối buổi', 'Thay đổi']];
+  const lines = [['Họ tên', 'Năm sinh', 'Đơn vị', 'Điểm đầu buổi (/100)', 'Số đúng đầu buổi', 'Điểm cuối buổi (/100)', 'Số đúng cuối buổi', 'Thay đổi']];
   merged().forEach(m => {
     const r = m.pre || m.post;
     lines.push([r.name, r.birth, r.unit, m.pre ? m.pre.score : '', m.pre ? m.pre.correct : '', m.post ? m.post.score : '', m.post ? m.post.correct : '',
-      (m.pre && m.post) ? (m.post.score - m.pre.score).toFixed(1) : '']);
+      (m.pre && m.post) ? (m.post.score - m.pre.score) : '']);
   });
   download(lines, 'diem-atbx');
 }
 function csvFull() {
-  const head = ['Lần', 'Họ tên', 'Năm sinh', 'Đơn vị', 'Số đúng', 'Điểm', 'Nộp chính thức'];
+  const head = ['Lần', 'Họ tên', 'Năm sinh', 'Đơn vị', 'Số đúng', 'Điểm (/100)', 'Nộp chính thức'];
   for (let i = 1; i <= N; i++) head.push('C' + i);
   const lines = [head];
   merged().forEach(m => ['pre', 'post'].forEach(s => {
