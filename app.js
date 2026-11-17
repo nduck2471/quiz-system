@@ -22,6 +22,7 @@ const saveLocal = () => { try { localStorage.setItem(LS, JSON.stringify(state));
 
 let uid = '', offset = 0, startMs = 0, endMs = 0, view = '';
 let tickTimer = null, syncTimer = null, debounce = null, finishing = false, dirty = false;
+let isExited = !!state.isExited, lastExitAt = 0, lastReturnAt = 0;
 const now = () => Date.now() + offset;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -76,6 +77,7 @@ function applyConfig(cfg) {
   if (!cfg || !cfg.startMs) { msg('Bài kiểm tra chưa bắt đầu.<br>Vui lòng chờ giảng viên — trang sẽ tự mở.'); return; }
   if (state.startMs !== cfg.startMs) {      // lượt mới → làm lại từ đầu, giữ thông tin cá nhân
     state = { startMs: cfg.startMs, info: state.info || null, answers: {}, order: shuffle(Q.map(q => q.id)), finalSent: false };
+    isExited = false;
     saveLocal();
     view = '';
   }
@@ -148,6 +150,9 @@ function showQuiz() {
   updateProgress();
   clearInterval(syncTimer);
   syncTimer = setInterval(() => { if (dirty) save(false).catch(() => { dirty = true; }); }, 30000);
+  if (state.isExited) {
+    handleReturn('quiz-mounted');
+  }
 }
 
 app.addEventListener('change', e => {
@@ -171,6 +176,8 @@ async function finish() {
   if (finishing) return;
   finishing = true;
   clearInterval(syncTimer); clearTimeout(debounce); clearInterval(tickTimer);
+  const oldToast = document.getElementById('exitWarnToast');
+  if (oldToast) oldToast.remove();
   timerEl.textContent = '00:00'; timerEl.className = 'timer end';
   document.body.classList.add('locked');
   app.querySelectorAll('input').forEach(i => i.disabled = true);
@@ -198,6 +205,8 @@ async function finish() {
 
 function showDone(n) {
   clearInterval(tickTimer); clearInterval(syncTimer);
+  const oldToast = document.getElementById('exitWarnToast');
+  if (oldToast) oldToast.remove();
   timerEl.textContent = '00:00'; timerEl.className = 'timer end';
   const k = n === undefined ? Object.keys(state.answers || {}).length : n;
   msg('<span class="ok">Bài đã được nộp.</span><br>Bạn đã trả lời ' + k + '/' + N + ' câu.<br><span class="note">Có thể đóng trang này.</span>');
@@ -211,19 +220,70 @@ function showExitWarning(count) {
   toast.className = 'exit-warn-toast';
   toast.innerHTML = '⚠️ CẢNH BÁO: Bạn vừa rời khỏi màn hình làm bài! Hệ thống đã ghi nhận lần vi phạm thứ <b>' + count + '</b>. Vui lòng không chuyển ứng dụng!';
   document.body.appendChild(toast);
+  if (navigator.vibrate) {
+    try { navigator.vibrate([200, 100, 200]); } catch (e) {}
+  }
   setTimeout(() => { if (toast.parentNode) toast.remove(); }, 6000);
 }
 
-// Lưu và ghi nhận vi phạm khi học viên chuyển ứng dụng hoặc khóa màn hình
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && !finishing && state.info && startMs) {
-    state.exitCount = (Number(state.exitCount) || 0) + 1;
-    saveLocal();
-    dirty = true;
-    save(false).catch(() => { dirty = true; });
-  } else if (document.visibilityState === 'visible' && !finishing && state.info && startMs && (Number(state.exitCount) || 0) > 0) {
+// Xử lý sự kiện học viên rời bài thi (chuyển app, ẩn tab, Split View, Slide Over, blur)
+function handleExit(source) {
+  if (finishing || state.finalSent || !state.info || !startMs) return;
+  const nowMs = Date.now();
+  // Debounce 1000ms: tránh đếm trùng khi nhiều sự kiện (blur, visibilitychange, pagehide) cùng kích hoạt liên tiếp
+  if (isExited || (nowMs - lastExitAt < 1000)) return;
+
+  isExited = true;
+  lastExitAt = nowMs;
+  state.isExited = true;
+  state.exitCount = (Number(state.exitCount) || 0) + 1;
+  saveLocal();
+  dirty = true;
+  save(false).catch(() => { dirty = true; });
+}
+
+// Xử lý sự kiện học viên quay lại màn hình làm bài (visible, focus, pageshow)
+function handleReturn(source) {
+  if (finishing || state.finalSent || !state.info || !startMs) return;
+  if (document.visibilityState === 'hidden') return;
+  const nowMs = Date.now();
+  if (!isExited && !state.isExited) return;
+  if (nowMs - lastReturnAt < 800) return;
+
+  lastReturnAt = nowMs;
+  isExited = false;
+  state.isExited = false;
+  saveLocal();
+
+  if ((Number(state.exitCount) || 0) > 0) {
     showExitWarning(state.exitCount);
   }
+  if (dirty) {
+    save(false).catch(() => { dirty = true; });
+  }
+}
+
+// 1. Chuyển tab hoặc ẩn trình duyệt (toàn bộ iPhone, Android, Tablet, Máy tính)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    handleExit('visibilitychange-hidden');
+  } else if (document.visibilityState === 'visible') {
+    handleReturn('visibilitychange-visible');
+  }
+});
+
+// 2. iOS / Safari WebKit chuyển app, khóa màn hình, dọn ram
+window.addEventListener('pagehide', () => handleExit('pagehide'));
+window.addEventListener('pageshow', () => handleReturn('pageshow'));
+
+// 3. iPad / Máy tính bảng chia đôi màn hình (Split View), cửa sổ nổi (Slide Over), chạm ra app khác
+window.addEventListener('blur', e => {
+  if (e && e.target && e.target !== window && e.target !== document) return;
+  handleExit('blur');
+});
+window.addEventListener('focus', e => {
+  if (e && e.target && e.target !== window && e.target !== document) return;
+  handleReturn('focus');
 });
 
 init();
