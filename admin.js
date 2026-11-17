@@ -139,7 +139,7 @@ function renderResults() {
     const c = Number(x.exitCount || 0);
     if (c === 0) return '<span class="badge badge-ok">0</span>';
     if (c < 3) return '<span class="badge badge-warn">' + c + ' lần</span>';
-    return '<span class="badge badge-danger">⚠️ ' + c + ' lần</span>';
+    return '<span class="badge badge-danger">⛔ ' + c + ' lần (Thu bài)</span>';
   };
   let h = '<tr><th>#</th><th>Họ tên</th><th>Năm sinh</th><th>Đơn vị</th><th class="num">Đầu buổi (/100)</th><th class="num">Cuối buổi (/100)</th><th class="num">Thay đổi</th><th class="num" style="text-align:center">Rời tab</th></tr>';
   list.forEach((m, i) => {

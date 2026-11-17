@@ -83,6 +83,7 @@ function applyConfig(cfg) {
   }
   if (state.finalSent) { showDone(); return; }
   startMs = cfg.startMs; endMs = cfg.endMs;
+  if (state.info && (Number(state.exitCount) || 0) >= 3) { finish('cheat'); return; }
   if (now() >= endMs) { if (state.info) finish(); else msg('Đã hết giờ làm bài.'); return; }
   startTick();
   if (!state.info) { if (view !== 'info') showInfo(); }
@@ -172,7 +173,7 @@ function updateProgress() {
   document.getElementById('pBar').style.width = (n / N * 100) + '%';
 }
 
-async function finish() {
+async function finish(reason) {
   if (finishing) return;
   finishing = true;
   clearInterval(syncTimer); clearTimeout(debounce); clearInterval(tickTimer);
@@ -182,9 +183,14 @@ async function finish() {
   document.body.classList.add('locked');
   app.querySelectorAll('input').forEach(i => i.disabled = true);
   const n = Object.keys(state.answers || {}).length;
+  const isCheat = reason === 'cheat' || (Number(state.exitCount) || 0) >= 3;
+  if (view === 'msg') app.innerHTML = '';
   const banner = document.createElement('div');
   banner.className = 'card msg';
-  banner.innerHTML = 'Hết giờ. Đang nộp bài… <br><span class="note">Giữ nguyên trang này cho đến khi có thông báo đã nộp.</span>';
+  banner.innerHTML = (isCheat
+    ? '⛔ VI PHẠM QUY CHẾ (3/3): Bạn đã rời khỏi màn hình làm bài quá số lần quy định. Hệ thống đang tự động thu bài…'
+    : 'Hết giờ. Đang nộp bài… ') +
+    '<br><span class="note">Giữ nguyên trang này cho đến khi có thông báo đã nộp.</span>';
   app.prepend(banner); window.scrollTo(0, 0);
   await sleep(Math.random() * 3000);
   for (let attempt = 0; attempt < 15; attempt++) {
@@ -209,7 +215,11 @@ function showDone(n) {
   if (oldToast) oldToast.remove();
   timerEl.textContent = '00:00'; timerEl.className = 'timer end';
   const k = n === undefined ? Object.keys(state.answers || {}).length : n;
-  msg('<span class="ok">Bài đã được nộp.</span><br>Bạn đã trả lời ' + k + '/' + N + ' câu.<br><span class="note">Có thể đóng trang này.</span>');
+  if ((Number(state.exitCount) || 0) >= 3) {
+    msg('<span class="err">⛔ ĐÃ THU BÀI DO VI PHẠM (Rời màn hình ' + state.exitCount + ' lần).</span><br>Bài làm của bạn đã bị khóa và tự động nộp (' + k + '/' + N + ' câu).<br><span class="note">Vui lòng báo giảng viên nếu có sự cố ngoài ý muốn.</span>');
+  } else {
+    msg('<span class="ok">Bài đã được nộp.</span><br>Bạn đã trả lời ' + k + '/' + N + ' câu.<br><span class="note">Có thể đóng trang này.</span>');
+  }
 }
 
 function showExitWarning(count) {
@@ -218,7 +228,9 @@ function showExitWarning(count) {
   const toast = document.createElement('div');
   toast.id = 'exitWarnToast';
   toast.className = 'exit-warn-toast';
-  toast.innerHTML = '⚠️ CẢNH BÁO: Bạn vừa rời khỏi màn hình làm bài! Hệ thống đã ghi nhận lần vi phạm thứ <b>' + count + '</b>. Vui lòng không chuyển ứng dụng!';
+  toast.innerHTML = count >= 2
+    ? '🚨 CẢNH BÁO LẦN CUỐI (2/3): Thêm 1 lần rời màn hình nữa bài thi sẽ bị KHÓA và TỰ ĐỘNG NỘP NGAY LẬP TỨC!'
+    : '⚠️ CẢNH BÁO (1/3): Bạn vừa rời khỏi màn hình làm bài! Nếu vi phạm đủ 3 lần, hệ thống sẽ TỰ ĐỘNG THU BÀI!';
   document.body.appendChild(toast);
   if (navigator.vibrate) {
     try { navigator.vibrate([200, 100, 200]); } catch (e) {}
@@ -237,6 +249,13 @@ function handleExit(source) {
   lastExitAt = nowMs;
   state.isExited = true;
   state.exitCount = (Number(state.exitCount) || 0) + 1;
+  if (state.exitCount >= 3) {
+    isExited = false;
+    state.isExited = false;
+    saveLocal();
+    finish('cheat');
+    return;
+  }
   saveLocal();
   dirty = true;
   save(false).catch(() => { dirty = true; });
