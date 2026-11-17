@@ -1,6 +1,6 @@
 // Trang làm bài của học viên (Firebase). Không có nút nộp: hết giờ là tự nộp.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, signInAnonymously, onIdTokenChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDocFromServer, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const C = window.QUIZ_CONFIG, Q = window.QUESTIONS, N = Q.length;
@@ -20,9 +20,9 @@ let state = {};
 try { state = JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { state = {}; }
 const saveLocal = () => { try { localStorage.setItem(LS, JSON.stringify(state)); } catch (e) {} };
 
-let uid = '', offset = 0, startMs = 0, endMs = 0, view = '';
-let tickTimer = null, syncTimer = null, debounce = null, finishing = false, dirty = false;
-let isExited = !!state.isExited, lastExitAt = 0, lastReturnAt = 0;
+let uid = '', cachedToken = '', offset = 0, startMs = 0, endMs = 0, view = '';
+let tickTimer = null, syncTimer = null, focusTimer = null, tokenTimer = null, debounce = null, finishing = false, dirty = false, dirtySeq = 0;
+let isExited = !!state.isExited, lastExitAt = 0, lastReturnAt = 0, quizFocusedOnce = false;
 let shieldOffTimer = null, watermarkEl = null, shieldEl = null, fsOverlayEl = null;
 const isDesktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -41,8 +41,8 @@ function answerString() {
 }
 
 async function save(final) {
-  if (!state.info) return;
-  dirty = false;
+  if (!state.info || !uid || !startMs) return;
+  const seq = dirtySeq;
   const answers = answerString();
   const exitCount = Number(state.exitCount || 0);
   await setDoc(subRef(), {
@@ -52,6 +52,39 @@ async function save(final) {
     exitCount,
     final: !!final, updatedAt: serverTimestamp()
   });
+  if (dirtySeq === seq) dirty = false;
+}
+
+function sendExitBeacon(isFinal) {
+  if (!cachedToken || !state.info || !uid || !startMs || !C.firebase || !C.firebase.projectId) return;
+  try {
+    const docId = session + '_' + startMs + '_' + uid;
+    const fields = ['session', 'run', 'uid', 'name', 'birth', 'unit', 'answers', 'answered', 'exitCount', 'final'];
+    const mask = fields.map(f => 'updateMask.fieldPaths=' + f).join('&');
+    const url = 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(C.firebase.projectId) +
+      '/databases/(default)/documents/subs/' + encodeURIComponent(docId) + '?' + mask;
+    const answers = answerString();
+    const payload = {
+      fields: {
+        session: { stringValue: session },
+        run: { integerValue: String(startMs) },
+        uid: { stringValue: uid },
+        name: { stringValue: String(state.info.name) },
+        birth: { stringValue: String(state.info.birth) },
+        unit: { stringValue: String(state.info.unit) },
+        answers: { stringValue: answers },
+        answered: { integerValue: String(answers.replace(/-/g, '').length) },
+        exitCount: { integerValue: String(Number(state.exitCount || 0)) },
+        final: { booleanValue: !!isFinal }
+      }
+    };
+    fetch(url, {
+      method: 'PATCH',
+      keepalive: true,
+      headers: { 'Authorization': 'Bearer ' + cachedToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => {});
+  } catch (e) {}
 }
 
 // Đồng bộ đồng hồ với máy chủ Firebase (chênh lệch giờ điện thoại không ảnh hưởng)
@@ -69,7 +102,18 @@ async function syncClock() {
 async function init() {
   if (!C.firebase || String(C.firebase.apiKey).indexOf('DAN_') === 0) { msg('Chưa cấu hình Firebase (config.js).'); return; }
   msg('Đang kết nối…');
-  try { uid = (await signInAnonymously(auth)).user.uid; }
+  onIdTokenChanged(auth, user => {
+    if (user) user.getIdToken().then(t => { cachedToken = t; }).catch(() => {});
+  });
+  try {
+    const cred = await signInAnonymously(auth);
+    uid = cred.user.uid;
+    cachedToken = await cred.user.getIdToken();
+    clearInterval(tokenTimer);
+    tokenTimer = setInterval(() => {
+      if (auth.currentUser) auth.currentUser.getIdToken().then(t => { cachedToken = t; }).catch(() => {});
+    }, 240000);
+  }
   catch (e) { msg('Không kết nối được máy chủ.<br>Kiểm tra mạng rồi tải lại trang.'); return; }
   // Lắng nghe giờ bắt đầu/kết thúc theo thời gian thực
   onSnapshot(doc(db, 'config', session), snap => applyConfig(snap.exists() ? snap.data() : null),
@@ -244,6 +288,7 @@ function renderWatermark() {
 
 function cleanupProtection() {
   clearTimeout(shieldOffTimer);
+  clearInterval(focusTimer);
   document.body.classList.remove('quiz-active', 'shield-on');
   hideFsOverlay();
   if (isFs() && document.exitFullscreen) {
@@ -258,13 +303,22 @@ function cleanupProtection() {
   }
 }
 
+function isTabletSplitView() {
+  if (isDesktop) return false;
+  const sw = screen.width || 0, sh = screen.height || 0;
+  const minScreen = Math.min(sw, sh), maxScreen = Math.max(sw, sh);
+  if (minScreen < 600 || !window.innerWidth || !window.innerHeight) return false;
+  const fullPortrait = window.innerWidth >= minScreen * 0.90 && window.innerHeight >= maxScreen * 0.70;
+  const fullLandscape = window.innerWidth >= maxScreen * 0.90 && window.innerHeight >= minScreen * 0.65;
+  return !fullPortrait && !fullLandscape;
+}
+
 function checkSplitScreen() {
   if (isDesktop || view !== 'quiz' || finishing || state.finalSent) return;
-  const minScreen = Math.min(screen.width || 0, screen.height || 0);
-  if (minScreen >= 600 && window.innerWidth > 0 && window.innerWidth < minScreen * 0.85) {
+  if (isTabletSplitView()) {
     ensureShield();
     shieldEl.dataset.splitWarn = '1';
-    shieldEl.innerHTML = '<div>⛔ PHÁT HIỆN CHIA ĐÔI MÀN HÌNH (Split View)!<br><span style="font-size:15px;font-weight:400;opacity:0.85">Vui lòng tắt chia đôi màn hình và phóng to trình duyệt toàn màn hình để làm bài.</span></div>';
+    shieldEl.innerHTML = '<div>⛔ PHÁT HIỆN CHIA ĐÔI MÀN HÌNH (Split View / Cửa sổ thu nhỏ)!<br><span style="font-size:15px;font-weight:400;opacity:0.85">Vui lòng tắt chia đôi màn hình và mở trình duyệt toàn màn hình để làm bài.</span></div>';
     document.body.classList.add('shield-on');
     handleExit('split-screen');
   } else if (shieldEl && shieldEl.dataset.splitWarn === '1') {
@@ -274,12 +328,19 @@ function checkSplitScreen() {
   }
 }
 
+function updateExitBadge() {
+  const el = document.getElementById('exitPill');
+  if (!el) return;
+  const c = Number(state.exitCount || 0);
+  el.className = 'exit-pill' + (c >= 2 ? ' danger' : c === 1 ? ' warn' : '');
+  el.innerHTML = (c === 0 ? '🛡️' : '⚠️') + ' Giám sát rời màn hình: <b>' + c + '/3</b> lần';
+}
+
 function showQuiz() {
   view = 'quiz';
   document.body.classList.add('quiz-active');
   ensureShield();
   renderWatermark();
-  checkSplitScreen();
   if (isDesktop && canFs) {
     setTimeout(() => {
       if (view === 'quiz' && !finishing && !state.finalSent && !isFs()) {
@@ -288,7 +349,9 @@ function showQuiz() {
     }, 250);
   }
   let html = '<div class="prog"><span id="pTxt"></span><div class="bar2"><span id="pBar"></span></div></div>' +
-    '<p class="note">' + esc(state.info.name) + ' · ' + esc(state.info.birth) + ' · ' + esc(state.info.unit) + '</p>';
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
+    '<span class="note" style="margin:0">' + esc(state.info.name) + ' · ' + esc(state.info.birth) + ' · ' + esc(state.info.unit) + '</span>' +
+    '<span class="exit-pill" id="exitPill"></span></div>';
   state.order.forEach((id, idx) => {
     const q = Q.find(x => x.id === id);
     html += '<div class="card" data-q="' + id + '"><div class="grp">' + esc(q.g) + '</div>' +
@@ -303,8 +366,26 @@ function showQuiz() {
   html += '<div class="card note" style="text-align:center">Hết giờ bài sẽ tự động nộp. Bạn có thể đổi đáp án đến khi hết giờ.</div>';
   app.innerHTML = html;
   updateProgress();
+  updateExitBadge();
+  checkSplitScreen();
   clearInterval(syncTimer);
   syncTimer = setInterval(() => { if (dirty) save(false).catch(() => { dirty = true; }); }, 30000);
+  quizFocusedOnce = document.hasFocus() && document.visibilityState === 'visible';
+  clearInterval(focusTimer);
+  focusTimer = setInterval(() => {
+    if (view !== 'quiz' || finishing || state.finalSent) return;
+    checkSplitScreen();
+    const splitLocked = !!(shieldEl && shieldEl.dataset.splitWarn === '1');
+    const active = document.hasFocus() && document.visibilityState === 'visible';
+    if (active) {
+      quizFocusedOnce = true;
+      if ((isExited || state.isExited) && !splitLocked) {
+        handleReturn('focus-poll');
+      }
+    } else if (quizFocusedOnce) {
+      handleExit('focus-poll');
+    }
+  }, 400);
   if (state.isExited) {
     handleReturn('quiz-mounted');
   }
@@ -314,7 +395,7 @@ app.addEventListener('change', e => {
   const t = e.target;
   if (finishing || !t.name || t.name[0] !== 'q') return;
   const id = Number(t.name.slice(1));
-  state.answers[id] = Number(t.value); saveLocal(); dirty = true;
+  state.answers[id] = Number(t.value); saveLocal(); dirtySeq++; dirty = true;
   t.closest('.card').querySelectorAll('.opt').forEach(l => l.classList.toggle('sel', l.querySelector('input').checked));
   updateProgress();
   clearTimeout(debounce);
@@ -409,15 +490,19 @@ function handleExit(source) {
   lastExitAt = nowMs;
   state.isExited = true;
   state.exitCount = (Number(state.exitCount) || 0) + 1;
+  updateExitBadge();
+  dirtySeq++;
+  dirty = true;
   if (state.exitCount >= 3) {
     isExited = false;
     state.isExited = false;
     saveLocal();
+    sendExitBeacon(true);
     finish('cheat');
     return;
   }
   saveLocal();
-  dirty = true;
+  sendExitBeacon(false);
   save(false).catch(() => { dirty = true; });
 }
 
@@ -425,10 +510,14 @@ function handleExit(source) {
 function handleReturn(source) {
   if (finishing || state.finalSent || !state.info || !startMs) return;
   if (document.visibilityState === 'hidden') return;
-  clearTimeout(shieldOffTimer);
-  shieldOffTimer = setTimeout(() => {
-    document.body.classList.remove('shield-on');
-  }, 300);
+  const splitLocked = !!(shieldEl && shieldEl.dataset.splitWarn === '1');
+  const fsLocked = !!(fsOverlayEl && !fsOverlayEl.classList.contains('hidden'));
+  if (!splitLocked && !fsLocked) {
+    clearTimeout(shieldOffTimer);
+    shieldOffTimer = setTimeout(() => {
+      document.body.classList.remove('shield-on');
+    }, 300);
+  }
   const nowMs = Date.now();
   if (!isExited && !state.isExited) return;
   if (nowMs - lastReturnAt < 800) return;
@@ -437,11 +526,12 @@ function handleReturn(source) {
   isExited = false;
   state.isExited = false;
   saveLocal();
+  updateExitBadge();
 
   if ((Number(state.exitCount) || 0) > 0) {
     showExitWarning(state.exitCount);
-  }
-  if (dirty) {
+    save(false).catch(() => { dirty = true; });
+  } else if (dirty) {
     save(false).catch(() => { dirty = true; });
   }
 }

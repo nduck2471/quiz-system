@@ -67,3 +67,7 @@ body.shield-on .privacy-shield{display:flex}
 .fs-overlay h2{margin:0;color:#fca5a5;font-size:22px}
 .fs-overlay p{margin:0;max-width:460px;line-height:1.5;color:#e2e8f0}
 tr.dup-row td{background:#fef9c3 !important}
+.exit-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;margin-top:4px}
+.exit-pill.warn{background:#fef3c7;color:#b45309;border-color:#f59e0b}
+.exit-pill.danger{background:#fee2e2;color:#b91c1c;border-color:#ef4444}
+.ver{font-size:11px;color:#94a3b8;text-align:center;margin:16px 0}
