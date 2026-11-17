@@ -1,13 +1,13 @@
-// Cấu hình Firebase của dự án atbx-test.
+// Cấu hình Firebase của dự án quiz-system-online.
 // Các khóa này là công khai theo thiết kế của Firebase; dữ liệu được bảo vệ bằng firestore.rules.
 window.QUIZ_CONFIG = {
   TITLE: "Kiểm tra An toàn bức xạ – KTV xạ trị",
   firebase: {
-    apiKey: "AIzaSyCUoGEtSWTH_UYhWqCGAAkDV1UXf7gum8Y",
-    authDomain: "atbx-test.firebaseapp.com",
-    projectId: "atbx-test",
-    storageBucket: "atbx-test.firebasestorage.app",
-    messagingSenderId: "750096453972",
-    appId: "1:750096453972:web:de029406f43392f4e978c1"
+    apiKey: "AIzaSyDo8lhWbUc4YMLqWEhmYXELlQl65Xgonxc",
+    authDomain: "quiz-system-online.firebaseapp.com",
+    projectId: "quiz-system-online",
+    storageBucket: "quiz-system-online.firebasestorage.app",
+    messagingSenderId: "844497234047",
+    appId: "1:844497234047:web:65d1cd9926460f3a0d774a"
   }
 };

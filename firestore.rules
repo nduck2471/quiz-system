@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HÀM KIỂM TRA QUYỀN GIẢNG VIÊN (ADMIN)
+    // =========================================================================
+    // Để cấp quyền giảng viên, hãy thêm email của bạn vào danh sách dưới đây.
+    // Lưu ý: Tài khoản admin PHẢI đăng nhập bằng Email/Password (không phải Anonymous).
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.email != null &&
+             request.auth.token.email in [
+               "admin@gmail.com",
+               "giangvien@gmail.com",
+               "qtphamhus@gmail.com"
+               // Thêm email giảng viên của bạn vào đây
+             ];
+    }
+
+    // =========================================================================
+    // 1. CẤU HÌNH ĐỢT THI (config/pre, config/post)
+    // =========================================================================
+    // - Cho phép TẤT CẢ mọi người (học viên/khách) đọc công khai để nhận biết giờ bắt đầu/kết thúc
+    // - Chỉ Admin (giảng viên) mới được tạo, chỉnh sửa giờ hoặc xóa cấu hình đợt thi
+    match /config/{session} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 2. KHU VỰC BÍ MẬT (secret/answerKey, secret/clock)
+    // =========================================================================
+    // - secret/answerKey: Lưu chuỗi 50 đáp án trắc nghiệm chuẩn
+    // - secret/clock: Dùng để đồng bộ giờ máy chủ và kiểm tra xác thực quyền admin
+    // => BẢO VỆ TUYỆT ĐỐI: Chỉ giảng viên (isAdmin) mới có quyền đọc và ghi!
+    // => Học viên hoàn toàn KHÔNG THỂ đọc trộm đáp án từ client.
+    match /secret/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 3. BÀI LÀM CỦA HỌC VIÊN (subs)
+    // =========================================================================
+    // - Học viên (đăng nhập Anonymous):
+    //   + Đọc bài của chính mình (để đồng bộ giờ và xem trạng thái nộp)
+    //   + Tạo mới hoặc cập nhật bài làm của chính mình (uid trùng khớp với request.auth.uid)
+    // - Giảng viên (Admin):
+    //   + Đọc toàn bộ danh sách nộp bài để thống kê và xuất file CSV điểm
+    //   + Xóa kết quả khi bắt đầu lớp mới
+    match /subs/{subId} {
+      // Cho phép học viên đọc bài của mình hoặc Admin đọc tất cả
+      allow read: if isAdmin() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid));
+
+      // Học viên tạo bài làm mới mang đúng UID của mình
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+
+      // Học viên cập nhật bài làm của chính mình
+      allow update: if request.auth != null && 
+                      request.resource.data.uid == request.auth.uid && 
+                      (resource == null || resource.data.uid == request.auth.uid);
+
+      // Chỉ Admin mới được xóa dữ liệu (chức năng Lớp mới — xóa kết quả)
+      allow delete: if isAdmin();
+    }
+
+  }
+}
