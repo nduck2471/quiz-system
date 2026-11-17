@@ -134,13 +134,24 @@ function renderResults() {
   if (!$('panel') || $('panel').classList.contains('hidden')) return;
   const list = merged();
   const sc = x => x ? x.score + (x.final ? '' : '*') : '—';
-  let h = '<tr><th>#</th><th>Họ tên</th><th>Năm sinh</th><th>Đơn vị</th><th class="num">Đầu buổi (/100)</th><th class="num">Cuối buổi (/100)</th><th class="num">Thay đổi</th></tr>';
+  const badgeExit = x => {
+    if (!x) return '—';
+    const c = Number(x.exitCount || 0);
+    if (c === 0) return '<span class="badge badge-ok">0</span>';
+    if (c < 3) return '<span class="badge badge-warn">' + c + ' lần</span>';
+    return '<span class="badge badge-danger">⚠️ ' + c + ' lần</span>';
+  };
+  let h = '<tr><th>#</th><th>Họ tên</th><th>Năm sinh</th><th>Đơn vị</th><th class="num">Đầu buổi (/100)</th><th class="num">Cuối buổi (/100)</th><th class="num">Thay đổi</th><th class="num" style="text-align:center">Rời tab</th></tr>';
   list.forEach((m, i) => {
     const r = m.pre || m.post;
     const d = (m.pre && m.post) ? (m.post.score - m.pre.score) : null;
+    const exitHtml = (m.pre && m.post)
+      ? ('<span style="font-size:11px">Đầu:</span> ' + badgeExit(m.pre) + '<br><span style="font-size:11px">Cuối:</span> ' + badgeExit(m.post))
+      : badgeExit(m.post || m.pre);
     h += '<tr><td>' + (i + 1) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.birth) + '</td><td>' + esc(r.unit) + '</td>' +
       '<td class="num">' + sc(m.pre) + '</td><td class="num">' + sc(m.post) + '</td>' +
-      '<td class="num">' + (d === null ? '' : (d > 0 ? '+' : '') + d) + '</td></tr>';
+      '<td class="num">' + (d === null ? '' : (d > 0 ? '+' : '') + d) + '</td>' +
+      '<td class="num" style="text-align:center">' + exitHtml + '</td></tr>';
   });
   $('tbl').innerHTML = h;
 
@@ -171,21 +182,25 @@ function download(lines, name) {
   a.click();
 }
 function csv() {
-  const lines = [['Họ tên', 'Năm sinh', 'Đơn vị', 'Điểm đầu buổi (/100)', 'Số đúng đầu buổi', 'Điểm cuối buổi (/100)', 'Số đúng cuối buổi', 'Thay đổi']];
+  const lines = [['Họ tên', 'Năm sinh', 'Đơn vị', 'Điểm đầu buổi (/100)', 'Số đúng đầu buổi', 'Rời tab đầu buổi', 'Điểm cuối buổi (/100)', 'Số đúng cuối buổi', 'Rời tab cuối buổi', 'Thay đổi']];
   merged().forEach(m => {
     const r = m.pre || m.post;
-    lines.push([r.name, r.birth, r.unit, m.pre ? m.pre.score : '', m.pre ? m.pre.correct : '', m.post ? m.post.score : '', m.post ? m.post.correct : '',
-      (m.pre && m.post) ? (m.post.score - m.pre.score) : '']);
+    lines.push([
+      r.name, r.birth, r.unit,
+      m.pre ? m.pre.score : '', m.pre ? m.pre.correct : '', m.pre ? (m.pre.exitCount || 0) : '',
+      m.post ? m.post.score : '', m.post ? m.post.correct : '', m.post ? (m.post.exitCount || 0) : '',
+      (m.pre && m.post) ? (m.post.score - m.pre.score) : ''
+    ]);
   });
   download(lines, 'diem-atbx');
 }
 function csvFull() {
-  const head = ['Lần', 'Họ tên', 'Năm sinh', 'Đơn vị', 'Số đúng', 'Điểm (/100)', 'Nộp chính thức'];
+  const head = ['Lần', 'Họ tên', 'Năm sinh', 'Đơn vị', 'Số đúng', 'Điểm (/100)', 'Số lần rời tab', 'Nộp chính thức'];
   for (let i = 1; i <= N; i++) head.push('C' + i);
   const lines = [head];
   merged().forEach(m => ['pre', 'post'].forEach(s => {
     const r = m[s]; if (!r) return;
-    lines.push([s === 'pre' ? 'Đầu buổi' : 'Cuối buổi', r.name, r.birth, r.unit, r.correct, r.score, r.final ? 'Có' : 'Chưa'].concat(r.answers.split('')));
+    lines.push([s === 'pre' ? 'Đầu buổi' : 'Cuối buổi', r.name, r.birth, r.unit, r.correct, r.score, r.exitCount || 0, r.final ? 'Có' : 'Chưa'].concat(r.answers.split('')));
   }));
   download(lines, 'chi-tiet-dap-an-atbx');
 }

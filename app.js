@@ -39,10 +39,12 @@ async function save(final) {
   if (!state.info) return;
   dirty = false;
   const answers = answerString();
+  const exitCount = Number(state.exitCount || 0);
   await setDoc(subRef(), {
     session, run: startMs, uid,
     name: state.info.name, birth: state.info.birth, unit: state.info.unit,
     answers, answered: answers.replace(/-/g, '').length,
+    exitCount,
     final: !!final, updatedAt: serverTimestamp()
   });
 }
@@ -201,9 +203,27 @@ function showDone(n) {
   msg('<span class="ok">Bài đã được nộp.</span><br>Bạn đã trả lời ' + k + '/' + N + ' câu.<br><span class="note">Có thể đóng trang này.</span>');
 }
 
-// Lưu ngay khi học viên chuyển ứng dụng hoặc khóa màn hình
+function showExitWarning(count) {
+  const old = document.getElementById('exitWarnToast');
+  if (old) old.remove();
+  const toast = document.createElement('div');
+  toast.id = 'exitWarnToast';
+  toast.className = 'exit-warn-toast';
+  toast.innerHTML = '⚠️ CẢNH BÁO: Bạn vừa rời khỏi màn hình làm bài! Hệ thống đã ghi nhận lần vi phạm thứ <b>' + count + '</b>. Vui lòng không chuyển ứng dụng!';
+  document.body.appendChild(toast);
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 6000);
+}
+
+// Lưu và ghi nhận vi phạm khi học viên chuyển ứng dụng hoặc khóa màn hình
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && dirty && !finishing && state.info && startMs) save(false).catch(() => { dirty = true; });
+  if (document.visibilityState === 'hidden' && !finishing && state.info && startMs) {
+    state.exitCount = (Number(state.exitCount) || 0) + 1;
+    saveLocal();
+    dirty = true;
+    save(false).catch(() => { dirty = true; });
+  } else if (document.visibilityState === 'visible' && !finishing && state.info && startMs && (Number(state.exitCount) || 0) > 0) {
+    showExitWarning(state.exitCount);
+  }
 });
 
 init();

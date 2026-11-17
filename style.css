@@ -47,3 +47,11 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .qcell .lo{color:var(--red);font-weight:700}
 .tabs{display:flex;gap:8px;margin:8px 0}
 .hidden{display:none}
+
+/* Badges & Cảnh báo rời tab */
+.badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:700}
+.badge-ok{background:#dcfce7;color:#15803d}
+.badge-warn{background:#fef3c7;color:#b45309}
+.badge-danger{background:#fee2e2;color:#b91c1c;border:1px solid #f87171}
+.exit-warn-toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:999;background:#b91c1c;color:#fff;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,0.25);animation:shake 0.5s}
+@keyframes shake{0%,100%{transform:translateX(-50%)}20%,60%{transform:translateX(-54%)}40%,80%{transform:translateX(-46%)}}
