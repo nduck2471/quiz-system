@@ -303,6 +303,19 @@ function cleanupProtection() {
   }
 }
 
+const baseVpMap = {};
+function checkKeyboardCheat() {
+  if (isDesktop || view !== 'quiz' || finishing || state.finalSent || !window.visualViewport) return;
+  if (isTabletSplitView()) return;
+  const vv = window.visualViewport;
+  if (Math.abs((vv.scale || 1) - 1) > 0.05) return;
+  const ori = window.innerWidth > window.innerHeight ? 'L' : 'P';
+  if (!baseVpMap[ori] || vv.height > baseVpMap[ori]) baseVpMap[ori] = vv.height;
+  if (baseVpMap[ori] > 400 && (baseVpMap[ori] - vv.height) > 180) {
+    handleExit('keyboard-or-slideover');
+  }
+}
+
 function isTabletSplitView() {
   if (isDesktop) return false;
   const sw = screen.width || 0, sh = screen.height || 0;
@@ -620,6 +633,9 @@ document.addEventListener('keyup', handleProtectedKey);
   });
 });
 
-window.addEventListener('resize', checkSplitScreen);
+window.addEventListener('resize', () => { checkSplitScreen(); checkKeyboardCheat(); });
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => { checkSplitScreen(); checkKeyboardCheat(); });
+}
 
 init();
