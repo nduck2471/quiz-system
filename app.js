@@ -258,11 +258,28 @@ function cleanupProtection() {
   }
 }
 
+function checkSplitScreen() {
+  if (isDesktop || view !== 'quiz' || finishing || state.finalSent) return;
+  const minScreen = Math.min(screen.width || 0, screen.height || 0);
+  if (minScreen >= 600 && window.innerWidth > 0 && window.innerWidth < minScreen * 0.85) {
+    ensureShield();
+    shieldEl.dataset.splitWarn = '1';
+    shieldEl.innerHTML = '<div>⛔ PHÁT HIỆN CHIA ĐÔI MÀN HÌNH (Split View)!<br><span style="font-size:15px;font-weight:400;opacity:0.85">Vui lòng tắt chia đôi màn hình và phóng to trình duyệt toàn màn hình để làm bài.</span></div>';
+    document.body.classList.add('shield-on');
+    handleExit('split-screen');
+  } else if (shieldEl && shieldEl.dataset.splitWarn === '1') {
+    shieldEl.dataset.splitWarn = '';
+    shieldEl.innerHTML = '<div>🛡️ Đề thi đang được bảo vệ.<br><span style="font-size:15px;font-weight:400;opacity:0.85">Vui lòng quay lại màn hình làm bài. Nghiêm cấm chuyển tab hoặc chụp màn hình.</span></div>';
+    handleReturn('split-screen-fixed');
+  }
+}
+
 function showQuiz() {
   view = 'quiz';
   document.body.classList.add('quiz-active');
   ensureShield();
   renderWatermark();
+  checkSplitScreen();
   if (isDesktop && canFs) {
     setTimeout(() => {
       if (view === 'quiz' && !finishing && !state.finalSent && !isFs()) {
@@ -512,5 +529,7 @@ document.addEventListener('keyup', handleProtectedKey);
     }
   });
 });
+
+window.addEventListener('resize', checkSplitScreen);
 
 init();
