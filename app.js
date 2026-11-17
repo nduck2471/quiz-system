@@ -23,6 +23,10 @@ const saveLocal = () => { try { localStorage.setItem(LS, JSON.stringify(state));
 let uid = '', offset = 0, startMs = 0, endMs = 0, view = '';
 let tickTimer = null, syncTimer = null, debounce = null, finishing = false, dirty = false;
 let isExited = !!state.isExited, lastExitAt = 0, lastReturnAt = 0;
+let shieldOffTimer = null, watermarkEl = null, shieldEl = null, fsOverlayEl = null;
+const isDesktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const canFs = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
 const now = () => Date.now() + offset;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -126,13 +130,146 @@ function showInfo() {
       return;
     }
     state.info = { name, birth, unit }; saveLocal();
+    if (isDesktop && canFs) enterFs();
     showQuiz();
     syncClock();
   };
 }
 
+function enterFs() {
+  const el = document.documentElement;
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (fn) {
+    try { return Promise.resolve(fn.call(el)).catch(() => {}); } catch (e) {}
+  }
+  return Promise.resolve();
+}
+
+function showFsOverlay(isViolation) {
+  if (!isDesktop || !canFs || finishing || state.finalSent) return;
+  if (!fsOverlayEl) {
+    fsOverlayEl = document.createElement('div');
+    fsOverlayEl.className = 'fs-overlay';
+    fsOverlayEl.innerHTML = '<h2></h2><p></p><button id="btnEnterFs" style="padding:12px 24px;font-size:16px">🖥️ Vào Toàn màn hình để làm bài</button>';
+    document.body.appendChild(fsOverlayEl);
+    fsOverlayEl.querySelector('#btnEnterFs').onclick = async () => {
+      await enterFs();
+      if (isFs()) {
+        fsOverlayEl.classList.add('hidden');
+        document.body.classList.remove('shield-on');
+        handleReturn('fullscreen-reenter');
+      }
+    };
+  }
+  const h2 = fsOverlayEl.querySelector('h2');
+  const p = fsOverlayEl.querySelector('p');
+  if (isViolation) {
+    h2.textContent = '⛔ CẢNH BÁO: ĐÃ THOÁT TOÀN MÀN HÌNH!';
+    p.textContent = 'Bạn vừa thoát khỏi chế độ toàn màn hình. Hành vi này đã được ghi nhận là 1 lần vi phạm (' + (state.exitCount || 0) + '/3). Vui lòng quay lại toàn màn hình ngay!';
+  } else {
+    h2.textContent = '🖥️ Yêu cầu chế độ Toàn màn hình';
+    p.textContent = 'Bài thi trên máy tính bắt buộc thực hiện ở chế độ Toàn màn hình (Fullscreen). Nhấn nút bên dưới để tiếp tục làm bài.';
+  }
+  fsOverlayEl.classList.remove('hidden');
+}
+
+function hideFsOverlay() {
+  if (fsOverlayEl) fsOverlayEl.remove();
+  fsOverlayEl = null;
+}
+
+function ensureShield() {
+  if (!shieldEl) {
+    shieldEl = document.createElement('div');
+    shieldEl.className = 'privacy-shield';
+    shieldEl.innerHTML = '<div>🛡️ Đề thi đang được bảo vệ.<br><span style="font-size:15px;font-weight:400;opacity:0.85">Vui lòng quay lại màn hình làm bài. Nghiêm cấm chuyển tab hoặc chụp màn hình.</span></div>';
+  }
+  if (!shieldEl.parentNode) {
+    document.body.appendChild(shieldEl);
+  }
+}
+
+function renderWatermark() {
+  if (!state.info) return;
+  if (!watermarkEl) {
+    watermarkEl = document.createElement('div');
+    watermarkEl.className = 'watermark-layer';
+    watermarkEl.setAttribute('aria-hidden', 'true');
+  }
+  if (!watermarkEl.parentNode) {
+    document.body.appendChild(watermarkEl);
+  }
+  const text = state.info.name + ' - ' + state.info.birth + ' - ' + state.info.unit;
+  const tileW = Math.max(320, text.length * 10 + 80);
+  const tileH = 160;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+
+  const defs = document.createElementNS(ns, 'defs');
+  const pat = document.createElementNS(ns, 'pattern');
+  pat.setAttribute('id', 'quizWatermarkPattern');
+  pat.setAttribute('width', String(tileW));
+  pat.setAttribute('height', String(tileH));
+  pat.setAttribute('patternUnits', 'userSpaceOnUse');
+  pat.setAttribute('patternTransform', 'rotate(-25)');
+
+  const makeText = (x, y) => {
+    const t = document.createElementNS(ns, 'text');
+    t.setAttribute('x', String(x));
+    t.setAttribute('y', String(y));
+    t.setAttribute('fill', '#0B3C5D');
+    t.setAttribute('font-size', '15');
+    t.setAttribute('font-weight', '700');
+    t.setAttribute('font-family', '"Be Vietnam Pro", system-ui, -apple-system, sans-serif');
+    t.textContent = text;
+    return t;
+  };
+
+  pat.appendChild(makeText(20, 50));
+  pat.appendChild(makeText(20 + tileW / 2, 130));
+  pat.appendChild(makeText(20 - tileW / 2, 130));
+  defs.appendChild(pat);
+  svg.appendChild(defs);
+
+  const rect = document.createElementNS(ns, 'rect');
+  rect.setAttribute('width', '100%');
+  rect.setAttribute('height', '100%');
+  rect.setAttribute('fill', 'url(#quizWatermarkPattern)');
+  svg.appendChild(rect);
+
+  watermarkEl.replaceChildren(svg);
+}
+
+function cleanupProtection() {
+  clearTimeout(shieldOffTimer);
+  document.body.classList.remove('quiz-active', 'shield-on');
+  hideFsOverlay();
+  if (isFs() && document.exitFullscreen) {
+    document.exitFullscreen().catch(() => {});
+  }
+  if (watermarkEl) {
+    watermarkEl.replaceChildren();
+    watermarkEl.remove();
+  }
+  if (shieldEl) {
+    shieldEl.remove();
+  }
+}
+
 function showQuiz() {
   view = 'quiz';
+  document.body.classList.add('quiz-active');
+  ensureShield();
+  renderWatermark();
+  if (isDesktop && canFs) {
+    setTimeout(() => {
+      if (view === 'quiz' && !finishing && !state.finalSent && !isFs()) {
+        showFsOverlay(false);
+      }
+    }, 250);
+  }
   let html = '<div class="prog"><span id="pTxt"></span><div class="bar2"><span id="pBar"></span></div></div>' +
     '<p class="note">' + esc(state.info.name) + ' · ' + esc(state.info.birth) + ' · ' + esc(state.info.unit) + '</p>';
   state.order.forEach((id, idx) => {
@@ -176,6 +313,7 @@ function updateProgress() {
 async function finish(reason) {
   if (finishing) return;
   finishing = true;
+  cleanupProtection();
   clearInterval(syncTimer); clearTimeout(debounce); clearInterval(tickTimer);
   const oldToast = document.getElementById('exitWarnToast');
   if (oldToast) oldToast.remove();
@@ -210,6 +348,7 @@ async function finish(reason) {
 }
 
 function showDone(n) {
+  cleanupProtection();
   clearInterval(tickTimer); clearInterval(syncTimer);
   const oldToast = document.getElementById('exitWarnToast');
   if (oldToast) oldToast.remove();
@@ -241,6 +380,10 @@ function showExitWarning(count) {
 // Xử lý sự kiện học viên rời bài thi (chuyển app, ẩn tab, Split View, Slide Over, blur)
 function handleExit(source) {
   if (finishing || state.finalSent || !state.info || !startMs) return;
+  if (view === 'quiz') {
+    clearTimeout(shieldOffTimer);
+    document.body.classList.add('shield-on');
+  }
   const nowMs = Date.now();
   // Debounce 1000ms: tránh đếm trùng khi nhiều sự kiện (blur, visibilitychange, pagehide) cùng kích hoạt liên tiếp
   if (isExited || (nowMs - lastExitAt < 1000)) return;
@@ -265,6 +408,10 @@ function handleExit(source) {
 function handleReturn(source) {
   if (finishing || state.finalSent || !state.info || !startMs) return;
   if (document.visibilityState === 'hidden') return;
+  clearTimeout(shieldOffTimer);
+  shieldOffTimer = setTimeout(() => {
+    document.body.classList.remove('shield-on');
+  }, 300);
   const nowMs = Date.now();
   if (!isExited && !state.isExited) return;
   if (nowMs - lastReturnAt < 800) return;
@@ -303,6 +450,67 @@ window.addEventListener('blur', e => {
 window.addEventListener('focus', e => {
   if (e && e.target && e.target !== window && e.target !== document) return;
   handleReturn('focus');
+});
+
+// 4. Chặn chuột phải, sao chép, cắt, kéo thả khi đang làm bài
+['contextmenu', 'copy', 'cut', 'dragstart'].forEach(evt => {
+  document.addEventListener(evt, e => {
+    if (view === 'quiz' && !finishing) e.preventDefault();
+  });
+});
+
+// 5. Chặn phím tắt chụp màn hình, in ấn, lưu trang, DevTools
+function handleProtectedKey(e) {
+  if (view !== 'quiz' || finishing) return;
+  const k = (e.key || '').toLowerCase();
+  const code = e.code || '';
+  const mod = e.ctrlKey || e.metaKey;
+
+  const isPrintScreen = e.key === 'PrintScreen' || code === 'PrintScreen';
+  const isF12 = e.key === 'F12' || code === 'F12';
+  const isScreenCombo = e.metaKey && e.shiftKey && (['s', '3', '4', '5', '#', '$', '%'].includes(k) || ['KeyS', 'Digit3', 'Digit4', 'Digit5'].includes(code));
+  const isModShiftCombo = mod && e.shiftKey && (['i', 'j', 's', '3', '4', '5', '#', '$', '%'].includes(k) || ['KeyI', 'KeyJ', 'KeyS', 'Digit3', 'Digit4', 'Digit5'].includes(code));
+  const isModBasicCombo = mod && (['p', 's', 'c', 'u'].includes(k) || ['KeyP', 'KeyS', 'KeyC', 'KeyU'].includes(code));
+
+  if (isPrintScreen || isF12 || isScreenCombo || isModShiftCombo || isModBasicCombo) {
+    e.preventDefault();
+  }
+
+  if (isPrintScreen || isScreenCombo) {
+    clearTimeout(shieldOffTimer);
+    document.body.classList.add('shield-on');
+    handleExit('screenshot-key');
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      navigator.clipboard.writeText('Không được phép chụp màn hình đề thi!').catch(() => {});
+    }
+    if (!finishing) {
+      setTimeout(() => {
+        if (!finishing && view === 'quiz' && document.hasFocus() && document.visibilityState === 'visible') {
+          handleReturn('screenshot-recover');
+        }
+      }, 1500);
+    }
+  }
+}
+
+document.addEventListener('keydown', handleProtectedKey);
+document.addEventListener('keyup', handleProtectedKey);
+
+// 6. Ép chế độ Toàn màn hình (Fullscreen) trên máy tính
+['fullscreenchange', 'webkitfullscreenchange'].forEach(evt => {
+  document.addEventListener(evt, () => {
+    if (!isDesktop || view !== 'quiz' || finishing || state.finalSent) return;
+    if (!isFs()) {
+      handleExit('fullscreen-exit');
+      if (!finishing && !state.finalSent) {
+        showFsOverlay(true);
+      }
+    } else if (fsOverlayEl) {
+      fsOverlayEl.classList.add('hidden');
+      document.body.classList.remove('shield-on');
+      handleReturn('fullscreen-reenter');
+    }
+  });
 });
 
 init();

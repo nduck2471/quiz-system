@@ -133,6 +133,13 @@ function merged() {
 function renderResults() {
   if (!$('panel') || $('panel').classList.contains('hidden')) return;
   const list = merged();
+  const normKey = r => String(r.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim() + '|' + String(r.birth || '').trim();
+  const nameCount = new Map();
+  list.forEach(m => {
+    const r = m.pre || m.post;
+    const k = normKey(r);
+    nameCount.set(k, (nameCount.get(k) || 0) + 1);
+  });
   const sc = x => x ? x.score + (x.final ? '' : '*') : '—';
   const badgeExit = x => {
     if (!x) return '—';
@@ -144,11 +151,12 @@ function renderResults() {
   let h = '<tr><th>#</th><th>Họ tên</th><th>Năm sinh</th><th>Đơn vị</th><th class="num">Đầu buổi (/100)</th><th class="num">Cuối buổi (/100)</th><th class="num">Thay đổi</th><th class="num" style="text-align:center">Rời tab</th></tr>';
   list.forEach((m, i) => {
     const r = m.pre || m.post;
+    const isDup = (nameCount.get(normKey(r)) || 0) > 1;
     const d = (m.pre && m.post) ? (m.post.score - m.pre.score) : null;
     const exitHtml = (m.pre && m.post)
       ? ('<span style="font-size:11px">Đầu:</span> ' + badgeExit(m.pre) + '<br><span style="font-size:11px">Cuối:</span> ' + badgeExit(m.post))
       : badgeExit(m.post || m.pre);
-    h += '<tr><td>' + (i + 1) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.birth) + '</td><td>' + esc(r.unit) + '</td>' +
+    h += '<tr' + (isDup ? ' class="dup-row"' : '') + '><td>' + (i + 1) + '</td><td>' + esc(r.name) + (isDup ? ' <span class="badge badge-warn">⚠️ Trùng tên</span>' : '') + '</td><td>' + esc(r.birth) + '</td><td>' + esc(r.unit) + '</td>' +
       '<td class="num">' + sc(m.pre) + '</td><td class="num">' + sc(m.post) + '</td>' +
       '<td class="num">' + (d === null ? '' : (d > 0 ? '+' : '') + d) + '</td>' +
       '<td class="num" style="text-align:center">' + exitHtml + '</td></tr>';

@@ -55,3 +55,15 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .badge-danger{background:#fee2e2;color:#b91c1c;border:1px solid #f87171}
 .exit-warn-toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:999;background:#b91c1c;color:#fff;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,0.25);animation:shake 0.5s;max-width:92%;text-align:center}
 @keyframes shake{0%,100%{transform:translateX(-50%)}20%,60%{transform:translateX(-54%)}40%,80%{transform:translateX(-46%)}}
+
+/* Chống copy, in ấn, watermark & màn che bảo vệ đề thi */
+body.quiz-active{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+@media print{body{display:none !important}}
+.watermark-layer{position:fixed;inset:0;z-index:9990;pointer-events:none;overflow:hidden;opacity:0.09}
+.privacy-shield{position:fixed;inset:0;z-index:9995;background:rgba(15,23,42,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:18px;font-weight:600}
+body.shield-on .privacy-shield{display:flex}
+.fs-overlay{position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;gap:16px}
+.fs-overlay.hidden{display:none}
+.fs-overlay h2{margin:0;color:#fca5a5;font-size:22px}
+.fs-overlay p{margin:0;max-width:460px;line-height:1.5;color:#e2e8f0}
+tr.dup-row td{background:#fef9c3 !important}
