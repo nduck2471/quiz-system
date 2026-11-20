@@ -4,13 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
 <title>Điều khiển bài kiểm tra</title>
-<link rel="stylesheet" href="style.css?v=2026111804">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="bar"><span class="t">Trang giảng viên · Bài kiểm tra ATBX</span><span class="timer" id="timer">--:--</span></header>
+<header class="bar"><span class="t">Trang giảng viên · <span class="exTitle">Bài kiểm tra</span></span><span class="timer" id="timer">--:--</span></header>
 <main class="wide">
 
   <div class="card" id="login">
@@ -24,19 +22,52 @@
   </div>
 
   <div id="panel" class="hidden">
-    <div class="card hidden" id="keyBox">
-      <h2 style="margin-top:0">Đáp án</h2>
-      <p class="note">Dán chuỗi 50 ký tự đáp án (câu 1 → 50) — có trong file HƯỚNG DẪN. Đáp án chỉ lưu trên Firebase, học viên không đọc được.</p>
-      <input type="text" id="keyInput" maxlength="50" style="font-family:monospace">
-      <p id="keyErr" class="err"></p>
-      <button id="btnKey">Lưu đáp án</button>
+
+    <div class="card">
+      <h2 style="margin-top:0">Ngân hàng đề</h2>
+      <p class="note">Đề, đáp án và hướng dẫn chấm chỉ lưu trên Firebase (chỉ tài khoản giảng viên đọc được), không có trên GitHub. Học viên chỉ nhận câu hỏi — không kèm đáp án — khi lượt thi bắt đầu.</p>
+      <div style="max-height:320px;overflow:auto"><table id="xtbl"></table></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button id="btnNewExam">Thêm đề mới (file Word)</button>
+        <a class="note" href="mau-de-thi.docx" download style="align-self:center">Tải file Word mẫu</a>
+      </div>
+
+      <div id="xEditor" class="hidden" style="margin-top:16px;border-top:1px solid #e3e9ef;padding-top:12px">
+        <h3 id="xEdTitle" style="margin-top:0">Thêm đề mới</h3>
+        <div class="row">
+          <div><label class="f">Mã đề (không dấu, ví dụ atbx-ktv)</label><input type="text" id="xId" maxlength="40"></div>
+          <div style="flex:2"><label class="f">Tên đề / môn thi</label><input type="text" id="xTitle" maxlength="150"></div>
+        </div>
+        <div class="row">
+          <div style="flex:2"><label class="f">Đơn vị (in trên phiếu)</label><input type="text" id="xOrg" maxlength="150"></div>
+          <div><label class="f">Hình thức</label><select id="xMode"><option value="prepost">Test đầu + cuối buổi</option><option value="single">Một lần thi</option></select></div>
+        </div>
+        <div class="row">
+          <div><label class="f">Điểm mỗi câu trắc nghiệm</label><input type="text" inputmode="decimal" id="xPoints"></div>
+          <div><label class="f">Thời gian mặc định (phút)</label><input type="number" id="xMinutes" min="1" max="180" value="15"></div>
+          <div><label class="f">&nbsp;</label><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="xEssayPre" style="width:auto" checked> Có tự luận ở test đầu buổi</label></div>
+        </div>
+        <div class="row">
+          <div><label class="f">Khóa bài khi rời trang quá (lần)</label><input type="number" id="xAwayN" min="0" max="50" value="3"></div>
+          <div><label class="f">…hoặc tổng thời gian rời trang quá (giây)</label><input type="number" id="xAwaySec" min="0" max="3600" value="30"></div>
+          <div><label class="f">&nbsp;</label><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="xShuffle" style="width:auto" checked> Xáo trộn thứ tự A–D trên từng máy</label></div>
+        </div>
+        <p class="note">Nhập 0 để chỉ ghi nhận và cảnh báo, không khóa bài. Câu có phương án kiểu "Tất cả các ý trên", "A và B" tự động giữ nguyên thứ tự.</p>
+        <label class="f">File Word đề thi (.docx, theo mẫu)</label>
+        <input type="file" id="xFile" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        <div id="xPreview" style="margin-top:10px"></div>
+        <p id="xErr" class="err"></p>
+        <div style="display:flex;gap:8px"><button id="xSave">Lưu đề vào Firebase</button><button class="sec" id="xCancel">Hủy</button></div>
+      </div>
     </div>
 
     <div class="card">
       <div class="row">
-        <div><label class="f">Lần kiểm tra</label>
-          <select id="session"><option value="pre">Test đầu buổi</option><option value="post">Test cuối buổi</option></select></div>
+        <div style="flex:2"><label class="f">Đề thi</label><select id="examSel"></select></div>
+        <div id="sessionWrap"><label class="f">Lần kiểm tra</label><select id="session"></select></div>
         <div><label class="f">Thời gian (phút)</label><input type="number" id="minutes" value="15" min="1" max="180"></div>
+      </div>
+      <div class="row">
         <div><button id="btnStart" style="width:100%">Bắt đầu và hiện QR</button></div>
         <div><button id="btnStop" class="danger" style="width:100%">Kết thúc sớm</button></div>
       </div>
@@ -51,35 +82,65 @@
           <div class="stats">
             <div class="stat"><b id="nJoin">0</b>đã vào làm</div>
             <div class="stat"><b id="nDone">0</b>đã nộp</div>
+            <div class="stat"><b id="nAway" style="color:#C0392B">0</b>có rời trang</div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0">Kết quả</h2>
+      <h2 style="margin-top:0">Kết quả · <span class="exTitle"></span></h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="sec" id="btnCsv">Tải CSV điểm</button>
-        <button class="sec" id="btnCsvFull">Tải CSV chi tiết đáp án</button>
-        <button class="sec" id="btnEditKey">Sửa đáp án</button>
-        <button class="danger" id="btnClear">Lớp mới — xóa kết quả</button>
+        <button class="sec" id="btnCsvFull">Tải CSV chi tiết bài làm</button>
+        <button class="danger" id="btnClear">Lớp mới — xóa danh sách</button>
       </div>
       <div class="stats" id="summary" style="margin:16px 0"></div>
-      <p class="note">Dấu * : học viên chưa nộp chính thức (đóng trang trước giờ) — điểm tính theo bản lưu gần nhất.</p>
+      <p class="note">Cột "Rời trang": số lần · tổng giây học viên rời khỏi trang thi (chuyển ứng dụng/tab, khóa màn hình); 🔒 = bài bị khóa tự động. Dấu * : học viên chưa nộp chính thức (đóng trang trước giờ) — điểm tính theo bản lưu gần nhất. "+ ?" : phần tự luận chưa chấm.</p>
       <div style="max-height:520px;overflow:auto"><table id="tbl"></table></div>
     </div>
 
     <div class="card">
+      <h2 style="margin-top:0">Chấm tự luận &amp; lập hồ sơ</h2>
+      <p class="note">1) Bấm <b>Chấm</b> từng bài, nhập điểm tự luận theo hướng dẫn chấm. 2) Khi đã chấm xong (và lượt kiểm tra kết thúc ≥ 5 phút), bấm <b>Lập hồ sơ PDF</b>: mỗi bài thành một file PDF kèm mã băm SHA-256, lưu vĩnh viễn trong kho (không sửa/xóa được) và tải về một file ZIP. Chấm lại sau khi đã lập sẽ tạo phiên bản hồ sơ mới.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button id="btnArchive">Lập hồ sơ PDF (bài đã chấm xong)</button>
+      </div>
+      <p class="note" id="gInfo"></p>
+      <div style="max-height:520px;overflow:auto"><table id="gtbl"></table></div>
+      <div id="gpanel" class="hidden" style="margin-top:16px"></div>
+    </div>
+
+    <div class="card">
       <h2 style="margin-top:0">Tỷ lệ trả lời đúng từng câu</h2>
-      <p class="note">Đầu buổi → Cuối buổi. Câu tô đỏ: cuối buổi vẫn dưới 70% đúng — nên chữa lại.</p>
+      <p class="note" id="qnote"></p>
       <div class="qbar" id="qstats"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">Kho hồ sơ (căn cứ thanh kiểm tra)</h2>
+      <p class="note" id="aCount"></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <input type="text" id="aSearch" placeholder="Tìm theo tên, đề hoặc mã hồ sơ" style="max-width:320px">
+        <button class="sec" id="btnCsvAll">Tải bảng kê toàn bộ (CSV)</button>
+      </div>
+      <div style="max-height:420px;overflow:auto"><table id="atbl"></table></div>
+      <h3>Kiểm tra file PDF hồ sơ</h3>
+      <p class="note">Chọn một hoặc nhiều file PDF hồ sơ: hệ thống tính SHA-256 ngay trên máy và đối chiếu với kho. "KHỚP" nghĩa là file chưa bị sửa dù chỉ một ký tự.</p>
+      <input type="file" id="verifyFile" accept="application/pdf" multiple>
+      <div id="verifyOut"></div>
+      <h3>Đối chiếu biên nhận của học viên</h3>
+      <p class="note">Dán "Mã biên nhận (SHA-256)" in trên biên nhận học viên đưa ra để xem bài nào trong kho có đúng nội dung đó.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="rcHash" placeholder="64 ký tự" style="max-width:560px;font-family:monospace"><button class="sec" id="rcBtn">Đối chiếu</button></div>
+      <div id="rcOut" style="margin-top:8px"></div>
     </div>
   </div>
 </main>
-<div class="ver">Phiên bản v2.7 · Trang giảng viên</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="config.js?v=2026111804"></script>
-<script src="questions.js?v=2026111804"></script>
-<script type="module" src="admin.js?v=2026111804"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="config.js"></script>
+<script>if (window.QUIZ_CONFIG && QUIZ_CONFIG.SITE) document.title = "Giảng viên · " + QUIZ_CONFIG.SITE;</script>
+<script type="module" src="admin.js"></script>
 </body>
 </html>
